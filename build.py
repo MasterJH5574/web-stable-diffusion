@@ -76,8 +76,19 @@ def trace_models(
     device_str: str,
 ) -> Tuple[tvm.IRModule, Dict[str, List[tvm.nd.NDArray]]]:
     from diffusers import StableDiffusionPipeline
+    from diffusers.pipelines.stable_diffusion.convert_from_ckpt import (
+        download_from_original_stable_diffusion_ckpt,
+    )
 
-    pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+    pipe = download_from_original_stable_diffusion_ckpt(
+        checkpoint_path="sd-v1-5/anything-v4-5/anything-v4.5-pruned-fp32.ckpt",
+        original_config_file="sd-v1-5/v1-inference.yaml",
+        image_size=512,
+        prediction_type="epsilon",
+    )
+
+    # pipe = StableDiffusionPipeline.from_pretrained("andite/anything-v4.0")
+    # pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
     clip = trace.clip_to_text_embeddings(pipe)
     unet = trace.unet_latents_to_noise_pred(pipe, device_str)
     vae = trace.vae_to_image(pipe)
@@ -111,7 +122,7 @@ def legalize_and_lift_params(
     )
 
     mod = relax.pipeline.get_pipeline()(mod)
-    mod = relax.transform.RemoveUnusedFunctions(entry_funcs)(mod)
+    mod = relax.transform.DeadCodeElimination(entry_funcs)(mod)
     mod = relax.transform.LiftTransformParams()(mod)
     mod_transform, mod_deploy = utils.split_transform_deploy_mod(
         mod, model_names, entry_funcs

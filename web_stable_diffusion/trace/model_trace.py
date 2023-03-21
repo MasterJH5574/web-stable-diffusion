@@ -39,13 +39,12 @@ def unet_latents_to_noise_pred(pipe, device_str: str) -> tvm.IRModule:
         def __init__(self, unet):
             super().__init__()
             self.unet = unet
-            self.guidance_scale = 7.5
 
-        def forward(self, latents, timestep_tensor, text_embeddings):
+        def forward(self, latents, timestep_tensor, text_embeddings, guidance_scale):
             latent_model_input = torch.cat([latents] * 2, dim=0)
             noise_pred = self.unet(latent_model_input, timestep_tensor, text_embeddings)
             noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-            noise_pred = noise_pred_uncond + self.guidance_scale * (
+            noise_pred = noise_pred_uncond + guidance_scale * (
                 noise_pred_text - noise_pred_uncond
             )
             return noise_pred
@@ -55,7 +54,12 @@ def unet_latents_to_noise_pred(pipe, device_str: str) -> tvm.IRModule:
     graph = fx.symbolic_trace(unet_to_noise_pred)
     mod = from_fx(
         graph,
-        [((1, 4, 64, 64), "float32"), ((), "int32"), ((2, 77, 768), "float32")],
+        [
+            ((1, 4, 64, 64), "float32"),
+            ((), "int32"),
+            ((2, 77, 768), "float32"),
+            ((), "float32"),
+        ],
         keep_params_as_input=True,
     )
     return tvm.IRModule({"unet": mod["main"]})
